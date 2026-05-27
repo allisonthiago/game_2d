@@ -9,15 +9,45 @@ import '../components/enemy.dart';
 import '../components/zone_background.dart';
 import '../components/wall.dart';
 import '../components/zone_portal.dart';
+import '../components/tree.dart';
+import '../components/cloud.dart';
+import '../components/river.dart';
 
 class MyGame extends FlameGame with HasCollisionDetection {
   late Player player;
   late JoystickComponent joystick;
   late ZoneBackground background;
   late HudButtonComponent attackButton;
+  late HudButtonComponent runButton;
+  late HudButtonComponent jumpButton;
   late HudButtonComponent inventoryButton;
   
   String currentZone = 'floresta';
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    
+    // Y-sorting dinâmico para dar profundidade visual 2D Zelda-like
+    for (final child in children) {
+      if (child is Player) {
+        // Base inferior do herói (âncora é centro)
+        child.priority = (child.position.y + child.size.y / 2).toInt();
+      } else if (child is Slime) {
+        // Base inferior do slime (âncora é centro)
+        child.priority = (child.position.y + child.size.y / 2).toInt();
+      } else if (child is Tree) {
+        // Árvores usam Anchor.bottomCenter, então Y já representa a base
+        child.priority = child.position.y.toInt();
+      } else if (child is Wall) {
+        // Paredes normais usam Anchor.topLeft
+        child.priority = (child.position.y + child.size.y).toInt();
+      } else if (child is River) {
+        // Rio fica desenhado sempre no fundo (sobre o background)
+        child.priority = -5;
+      }
+    }
+  }
 
   @override
   Future<void> onLoad() async {
@@ -46,6 +76,35 @@ class MyGame extends FlameGame with HasCollisionDetection {
       priority: 100,
     );
 
+    // Configuração do Botão de Correr Virtual (Priority: 100)
+    final runButtonPaint = BasicPalette.gray.withAlpha(180).paint();
+    final runButtonDownPaint = BasicPalette.gray.withAlpha(240).paint();
+    runButton = HudButtonComponent(
+      button: CircleComponent(radius: 20, paint: runButtonPaint),
+      buttonDown: CircleComponent(radius: 20, paint: runButtonDownPaint),
+      margin: const EdgeInsets.only(right: 120, bottom: 40),
+      onPressed: () {
+        player.isRunning = true;
+      },
+      onReleased: () {
+        player.isRunning = false;
+      },
+      priority: 100,
+    );
+
+    // Configuração do Botão de Pular Virtual (Priority: 100)
+    final jumpButtonPaint = BasicPalette.gray.withAlpha(180).paint();
+    final jumpButtonDownPaint = BasicPalette.gray.withAlpha(240).paint();
+    jumpButton = HudButtonComponent(
+      button: CircleComponent(radius: 20, paint: jumpButtonPaint),
+      buttonDown: CircleComponent(radius: 20, paint: jumpButtonDownPaint),
+      margin: const EdgeInsets.only(right: 40, bottom: 120),
+      onPressed: () {
+        player.jump();
+      },
+      priority: 100,
+    );
+
     // Configuração do Botão de Inventário Virtual (Priority: 100)
     final invButtonPaint = BasicPalette.green.withAlpha(200).paint();
     final invButtonDownPaint = BasicPalette.green.withAlpha(255).paint();
@@ -69,8 +128,31 @@ class MyGame extends FlameGame with HasCollisionDetection {
     // Adiciona os controles e a HUD (ficam presos na tela, Priority: 100)
     add(joystick);
     add(attackButton);
+    add(runButton);
+    add(jumpButton);
     add(inventoryButton);
     
+    // Rótulos de identificação visual para os botões virtuais
+    final runLabel = TextComponent(
+      text: 'RUN',
+      textRenderer: TextPaint(
+        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+      ),
+      position: Vector2(20, 20),
+      anchor: Anchor.center,
+    );
+    runButton.add(runLabel);
+
+    final jumpLabel = TextComponent(
+      text: 'JUMP',
+      textRenderer: TextPaint(
+        style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+      ),
+      position: Vector2(20, 20),
+      anchor: Anchor.center,
+    );
+    jumpButton.add(jumpLabel);
+
     final hud = PlayerHud()..priority = 100;
     add(hud);
 
@@ -89,7 +171,10 @@ class MyGame extends FlameGame with HasCollisionDetection {
       c is Slime ||
       c is Wall ||
       c is ZonePortal ||
-      c is ZoneBackground
+      c is ZoneBackground ||
+      c is Tree ||
+      c is Cloud ||
+      c is River
     ).toList();
     
     removeAll(oldComponents);
@@ -101,9 +186,12 @@ class MyGame extends FlameGame with HasCollisionDetection {
     // 3. Montar o layout de colisões, portais e spawnar inimigos
     if (zoneName == 'floresta') {
       // Spawn de slimes normais
-      add(Slime(Vector2(200, 200)));
-      add(Slime(Vector2(600, 300)));
-      add(Slime(Vector2(400, 700)));
+      add(Slime(Vector2(200, 250)));
+      add(Slime(Vector2(750, 300)));
+      add(Slime(Vector2(250, 750)));
+
+      // O Rio cruzando o mapa a X=460 (largura 80px)
+      add(River(position: Vector2(460, 0)));
 
       // Portal para a Vila (Vila fica à direita)
       add(ZonePortal(
@@ -113,21 +201,39 @@ class MyGame extends FlameGame with HasCollisionDetection {
         spawnPosition: Vector2(70, 500),
       ));
 
-      // Paredes limitadoras do mapa (Floresta)
-      add(Wall(position: Vector2(0, 0), size: Vector2(1000, 20))); // Topo
-      add(Wall(position: Vector2(0, 980), size: Vector2(1000, 20))); // Base
-      add(Wall(position: Vector2(0, 20), size: Vector2(20, 960))); // Esquerda
-      
-      // Direita com vão para o portal
-      add(Wall(position: Vector2(980, 20), size: Vector2(20, 430))); // Superior
-      add(Wall(position: Vector2(980, 550), size: Vector2(20, 430))); // Inferior
+      // Fronteiras densas de árvores gigantes ao invés de muralhas
+      // Topo
+      for (double x = 0; x <= 1000; x += 90) {
+        add(Tree(position: Vector2(x, 60), isGiant: true));
+      }
+      // Base
+      for (double x = 0; x <= 1000; x += 90) {
+        add(Tree(position: Vector2(x, 1050), isGiant: true));
+      }
+      // Esquerda
+      for (double y = 140; y <= 980; y += 90) {
+        add(Tree(position: Vector2(10, y), isGiant: true));
+      }
+      // Direita (com vão para o portal de Y=450 a Y=550)
+      for (double y = 140; y <= 980; y += 90) {
+        if (y > 380 && y < 580) continue;
+        add(Tree(position: Vector2(990, y), isGiant: true));
+      }
 
-      // Obstáculos extras na Floresta (Rochas)
-      add(Wall(position: Vector2(350, 350), size: Vector2(64, 64)));
-      add(Wall(position: Vector2(700, 650), size: Vector2(128, 64)));
+      // Árvores decorativas com colisão no tronco no meio da Floresta
+      add(Tree(position: Vector2(200, 350)));
+      add(Tree(position: Vector2(260, 420)));
+      add(Tree(position: Vector2(720, 200)));
+      add(Tree(position: Vector2(800, 700)));
+      add(Tree(position: Vector2(250, 780)));
+
+      // Nuvens flutuantes lentas para efeito de Parallax no céu (Priority: 95)
+      add(Cloud(position: Vector2(100, 150), speed: 12.0, opacity: 0.35, scaleFactor: 1.0));
+      add(Cloud(position: Vector2(450, 400), speed: 8.0, opacity: 0.3, scaleFactor: 1.3));
+      add(Cloud(position: Vector2(800, 680), speed: 18.0, opacity: 0.45, scaleFactor: 0.85));
     } 
     else if (zoneName == 'vila') {
-      // Vila Pacífica: sem inimigos (ou 1 slime inofensivo com 1 HP para teste)
+      // Vila Pacífica: sem inimigos
       
       // Portal de volta para a Floresta (à esquerda)
       add(ZonePortal(
@@ -154,13 +260,13 @@ class MyGame extends FlameGame with HasCollisionDetection {
       add(Wall(position: Vector2(20, 980), size: Vector2(430, 20))); // Base esquerda
       add(Wall(position: Vector2(550, 980), size: Vector2(430, 20))); // Base direita
 
-      // Casas da Vila (Obstáculos físicos intransponíveis)
-      add(Wall(position: Vector2(150, 150), size: Vector2(160, 120))); // Casa 1
-      add(Wall(position: Vector2(650, 150), size: Vector2(160, 120))); // Casa 2
-      add(Wall(position: Vector2(420, 450), size: Vector2(160, 160))); // Casa Central/Taverna
+      // Casas da Vila
+      add(Wall(position: Vector2(150, 150), size: Vector2(160, 120)));
+      add(Wall(position: Vector2(650, 150), size: Vector2(160, 120)));
+      add(Wall(position: Vector2(420, 450), size: Vector2(160, 160)));
     } 
     else if (zoneName == 'masmorra') {
-      // Masmorra escura com slimes mais resistentes (Vida: 45, Dano: 20)
+      // Masmorra escura com slimes mais resistentes
       final darkSlime1 = Slime(Vector2(250, 400))..health = 45;
       final darkSlime2 = Slime(Vector2(750, 400))..health = 45;
       final darkSlime3 = Slime(Vector2(500, 750))..health = 45;
@@ -184,10 +290,10 @@ class MyGame extends FlameGame with HasCollisionDetection {
       add(Wall(position: Vector2(0, 0), size: Vector2(450, 20))); // Topo esquerdo
       add(Wall(position: Vector2(550, 0), size: Vector2(450, 20))); // Topo direito
 
-      // Paredes internas criando um Labirinto
-      add(Wall(position: Vector2(300, 100), size: Vector2(30, 450))); // Parede vertical
-      add(Wall(position: Vector2(330, 520), size: Vector2(340, 30))); // Parede horizontal
-      add(Wall(position: Vector2(640, 250), size: Vector2(30, 300))); // Parede vertical 2
+      // Paredes internas
+      add(Wall(position: Vector2(300, 100), size: Vector2(30, 450)));
+      add(Wall(position: Vector2(330, 520), size: Vector2(340, 30)));
+      add(Wall(position: Vector2(640, 250), size: Vector2(30, 300)));
     }
 
     // 4. Posicionar o jogador na entrada da nova zona, se aplicável
