@@ -5,10 +5,12 @@ import 'rpg_stats.dart';
 import '../database/database_helper.dart';
 
 import 'package:flutter/material.dart';
+import 'item.dart';
 
 class Player extends SpriteComponent with HasGameReference<MyGame> {
   late JoystickComponent joystick;
   late RpgStats stats;
+  List<Item> inventory = [];
   
   final double speed = 150.0;
   Vector2 lastDirection = Vector2(1, 0);
@@ -32,6 +34,25 @@ class Player extends SpriteComponent with HasGameReference<MyGame> {
     } else {
       stats = RpgStats(); // Valores padrões
       await DatabaseHelper.instance.saveStats(stats.toMap());
+    }
+
+    // Carregar Inventário
+    final savedInventory = await DatabaseHelper.instance.loadInventory();
+    if (savedInventory.isEmpty) {
+      // Dá uma poção de presente pro jogador novo testar
+      final initialPotion = Item(
+        id: 'potion_1',
+        name: 'Poção de Vida',
+        description: 'Restaura 50 pontos de vida.',
+        type: 'consumable',
+        icon: 'assets/images/potion.png',
+        value: 50,
+        quantity: 1,
+      );
+      await DatabaseHelper.instance.saveItem(initialPotion.toMap());
+      inventory.add(initialPotion);
+    } else {
+      inventory = savedInventory.map((itemMap) => Item.fromMap(itemMap)).toList();
     }
   }
 
@@ -63,6 +84,26 @@ class Player extends SpriteComponent with HasGameReference<MyGame> {
     // Exemplo: Criar efeito visual de ataque na frente do jogador
     final attackEffect = AttackEffect(position + (lastDirection * 40));
     gameRef.add(attackEffect);
+  }
+
+  void useItem(Item item) {
+    if (item.type == 'consumable') {
+      stats.currentHealth += item.value;
+      if (stats.currentHealth > stats.maxHealth) {
+        stats.currentHealth = stats.maxHealth;
+      }
+      // Reduzir quantidade
+      item.quantity--;
+      if (item.quantity <= 0) {
+        inventory.remove(item);
+        DatabaseHelper.instance.deleteItem(item.id);
+      } else {
+        DatabaseHelper.instance.saveItem(item.toMap());
+      }
+      // Salvar os status de vida
+      DatabaseHelper.instance.saveStats(stats.toMap());
+      print("Usou \${item.name}. Vida curada!");
+    }
   }
 }
 

@@ -6,10 +6,11 @@ import 'package:flutter/material.dart';
 import '../components/player.dart';
 
 class MyGame extends FlameGame {
-  late Player _player;
+  late Player player;
   late JoystickComponent joystick;
   late SpriteComponent background;
   late HudButtonComponent attackButton;
+  late HudButtonComponent inventoryButton;
 
   @override
   Future<void> onLoad() async {
@@ -40,21 +41,35 @@ class MyGame extends FlameGame {
       buttonDown: CircleComponent(radius: 30, paint: buttonDownPaint),
       margin: const EdgeInsets.only(right: 40, bottom: 40),
       onPressed: () {
-        _player.attack();
+        player.attack();
+      },
+    );
+
+    // Configuração do Botão de Inventário Virtual
+    final invButtonPaint = BasicPalette.green.withAlpha(200).paint();
+    final invButtonDownPaint = BasicPalette.green.withAlpha(255).paint();
+    inventoryButton = HudButtonComponent(
+      button: CircleComponent(radius: 20, paint: invButtonPaint),
+      buttonDown: CircleComponent(radius: 20, paint: invButtonDownPaint),
+      margin: const EdgeInsets.only(top: 40, right: 40),
+      onPressed: () {
+        pauseEngine();
+        overlays.add('InventoryMenu');
       },
     );
 
     // Inicializa o jogador passando o joystick
-    _player = Player(joystick);
+    player = Player(joystick);
     
     // Adiciona o jogador à cena
-    add(_player);
+    add(player);
     
-    // Adiciona os controles (Joystick e Botão ficam presos na tela HUD)
+    // Adiciona os controles (Joystick e Botões ficam presos na tela HUD)
     add(joystick);
     add(attackButton);
+    add(inventoryButton);
 
     // Focar a câmera no jogador
-    camera.follow(_player);
+    camera.follow(player);
   }
 }

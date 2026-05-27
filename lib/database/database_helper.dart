@@ -21,12 +21,12 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2, // Versão atualizada para criar a nova tabela
       onCreate: _createDB,
+      onUpgrade: _upgradeDB,
     );
   }
 
-  Future _createDB(Database db, int version) async {
     // Tabela de status do personagem
     await db.execute('''
       CREATE TABLE player_stats (
@@ -40,6 +40,36 @@ class DatabaseHelper {
         defense INTEGER NOT NULL
       )
     ''');
+    
+    // Tabela de inventário
+    await db.execute('''
+      CREATE TABLE inventory (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        type TEXT NOT NULL,
+        icon TEXT NOT NULL,
+        value INTEGER NOT NULL,
+        quantity INTEGER NOT NULL
+      )
+    ''');
+  }
+
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Se estava na versão 1, cria a tabela de inventário
+      await db.execute('''
+        CREATE TABLE inventory (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL,
+          type TEXT NOT NULL,
+          icon TEXT NOT NULL,
+          value INTEGER NOT NULL,
+          quantity INTEGER NOT NULL
+        )
+      ''');
+    }
   }
 
   Future<void> saveStats(Map<String, dynamic> statsMap) async {
@@ -59,6 +89,29 @@ class DatabaseHelper {
       return result.first;
     }
     return null;
+  }
+
+  // --- MÉTODOS DO INVENTÁRIO ---
+  
+  Future<void> saveItem(Map<String, dynamic> itemMap) async {
+    final db = await instance.database;
+    final id = itemMap['id'];
+    
+    // Tenta atualizar se já existe, senão insere
+    int count = await db.update('inventory', itemMap, where: 'id = ?', whereArgs: [id]);
+    if (count == 0) {
+      await db.insert('inventory', itemMap);
+    }
+  }
+
+  Future<void> deleteItem(String id) async {
+    final db = await instance.database;
+    await db.delete('inventory', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<Map<String, dynamic>>> loadInventory() async {
+    final db = await instance.database;
+    return await db.query('inventory');
   }
 
   Future<void> close() async {
