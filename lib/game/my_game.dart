@@ -2,11 +2,13 @@ import 'package:flame/game.dart';
 import 'package:flame/components.dart';
 import 'package:flame/palette.dart';
 import 'package:flame/input.dart';
+import 'package:flame/collisions.dart';
 import 'package:flutter/material.dart';
 import '../components/player.dart';
 import '../components/player_hud.dart';
+import '../components/enemy.dart';
 
-class MyGame extends FlameGame {
+class MyGame extends FlameGame with HasCollisionDetection {
   late Player player;
   late JoystickComponent joystick;
   late SpriteComponent background;
@@ -64,6 +66,11 @@ class MyGame extends FlameGame {
     
     // Adiciona o jogador à cena
     add(player);
+    
+    // Spawn de alguns Slimes pelo mapa
+    add(Slime(Vector2(200, 200)));
+    add(Slime(Vector2(600, 300)));
+    add(Slime(Vector2(400, 700)));
     
     // Adiciona os controles e a HUD (ficam presos na tela)
     add(joystick);

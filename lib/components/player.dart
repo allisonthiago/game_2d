@@ -1,13 +1,15 @@
 import 'package:flame/components.dart';
 import 'package:flame/sprite.dart';
+import 'package:flame/collisions.dart';
 import '../game/my_game.dart';
 import 'rpg_stats.dart';
 import '../database/database_helper.dart';
 
 import 'package:flutter/material.dart';
 import 'item.dart';
+import 'enemy.dart';
 
-class Player extends SpriteComponent with HasGameReference<MyGame> {
+class Player extends SpriteComponent with HasGameReference<MyGame>, CollisionCallbacks {
   late JoystickComponent joystick;
   late RpgStats stats;
   List<Item> inventory = [];
@@ -26,6 +28,12 @@ class Player extends SpriteComponent with HasGameReference<MyGame> {
     
     // Posição inicial no centro da tela
     position = gameRef.size / 2;
+    
+    // Adicionar a caixa de colisão do Player
+    add(RectangleHitbox(
+      size: Vector2(40, 50),
+      position: Vector2(12, 14), // Ajuste manual dependendo do sprite
+    ));
     
     // Tentar carregar os stats do banco
     final savedStats = await DatabaseHelper.instance.loadStats();
@@ -74,6 +82,13 @@ class Player extends SpriteComponent with HasGameReference<MyGame> {
         flipHorizontally();
       }
     }
+    
+    // Travar movimento nas bordas do mapa (tamanho do background é 1000x1000)
+    // Subtraímos metade do tamanho do sprite para não cortar o desenho no limite
+    position.clamp(
+      Vector2(size.x / 2, size.y / 2),
+      Vector2(1000 - size.x / 2, 1000 - size.y / 2),
+    );
   }
 
   void attack() {
@@ -107,7 +122,7 @@ class Player extends SpriteComponent with HasGameReference<MyGame> {
   }
 }
 
-class AttackEffect extends SpriteComponent with HasGameReference<MyGame> {
+class AttackEffect extends SpriteComponent with HasGameReference<MyGame>, CollisionCallbacks {
   double _lifeTime = 0.2; // Efeito dura 0.2 segundos
 
   AttackEffect(Vector2 position) : super(size: Vector2(32, 32), position: position, anchor: Anchor.center);
@@ -116,6 +131,19 @@ class AttackEffect extends SpriteComponent with HasGameReference<MyGame> {
   Future<void> onLoad() async {
     // Usaremos um quadrado vermelho como placeholder para o corte da espada
     // Você pode trocar por uma imagem real depois
+    
+    // Adiciona o Hitbox que vai colidir com o inimigo
+    add(RectangleHitbox());
+  }
+  
+  @override
+  void onCollisionStart(Set<Vector2> intersectionPoints, PositionComponent other) {
+    super.onCollisionStart(intersectionPoints, other);
+    // Se bater num Slime, causa dano
+    if (other is Slime) {
+      other.takeDamage(game.player.stats.attackPower);
+      removeFromParent(); // Destrói o efeito após o acerto
+    }
   }
   
   @override
