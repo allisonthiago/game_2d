@@ -4,6 +4,7 @@ import 'package:flame/palette.dart';
 import 'package:flame/input.dart';
 import 'package:flutter/material.dart';
 import '../components/player.dart';
+import '../components/player_hud.dart';
 
 class MyGame extends FlameGame {
   late Player player;
@@ -64,10 +65,11 @@ class MyGame extends FlameGame {
     // Adiciona o jogador à cena
     add(player);
     
-    // Adiciona os controles (Joystick e Botões ficam presos na tela HUD)
+    // Adiciona os controles e a HUD (ficam presos na tela)
     add(joystick);
     add(attackButton);
     add(inventoryButton);
+    add(PlayerHud());
 
     // Focar a câmera no jogador
     camera.follow(player);
