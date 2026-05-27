@@ -27,16 +27,38 @@ class DatabaseHelper {
   }
 
   Future _createDB(Database db, int version) async {
-    // Aqui você pode criar as tabelas do seu jogo
-    // Exemplo: Tabela de high scores
+    // Tabela de status do personagem
     await db.execute('''
-      CREATE TABLE scores (
+      CREATE TABLE player_stats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        playerName TEXT NOT NULL,
-        score INTEGER NOT NULL,
-        date TEXT NOT NULL
+        level INTEGER NOT NULL,
+        currentExp INTEGER NOT NULL,
+        maxExp INTEGER NOT NULL,
+        currentHealth INTEGER NOT NULL,
+        maxHealth INTEGER NOT NULL,
+        attackPower INTEGER NOT NULL,
+        defense INTEGER NOT NULL
       )
     ''');
+  }
+
+  Future<void> saveStats(Map<String, dynamic> statsMap) async {
+    final db = await instance.database;
+    // Tentar atualizar o primeiro registro, ou inserir se não existir
+    int count = await db.update('player_stats', statsMap, where: 'id = ?', whereArgs: [1]);
+    if (count == 0) {
+      statsMap['id'] = 1;
+      await db.insert('player_stats', statsMap);
+    }
+  }
+
+  Future<Map<String, dynamic>?> loadStats() async {
+    final db = await instance.database;
+    final result = await db.query('player_stats', where: 'id = ?', whereArgs: [1]);
+    if (result.isNotEmpty) {
+      return result.first;
+    }
+    return null;
   }
 
   Future<void> close() async {
