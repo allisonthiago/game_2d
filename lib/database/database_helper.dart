@@ -21,12 +21,13 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2, // Versão atualizada para criar a nova tabela
+      version: 3, // Versão atualizada para adicionar stamina
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
   }
 
+  Future _createDB(Database db, int version) async {
     // Tabela de status do personagem
     await db.execute('''
       CREATE TABLE player_stats (
@@ -36,6 +37,8 @@ class DatabaseHelper {
         maxExp INTEGER NOT NULL,
         currentHealth INTEGER NOT NULL,
         maxHealth INTEGER NOT NULL,
+        currentStamina INTEGER NOT NULL,
+        maxStamina INTEGER NOT NULL,
         attackPower INTEGER NOT NULL,
         defense INTEGER NOT NULL
       )
@@ -69,6 +72,11 @@ class DatabaseHelper {
           quantity INTEGER NOT NULL
         )
       ''');
+    }
+    if (oldVersion < 3) {
+      // Adiciona colunas de stamina para jogadores existentes
+      await db.execute('ALTER TABLE player_stats ADD COLUMN currentStamina INTEGER NOT NULL DEFAULT 100');
+      await db.execute('ALTER TABLE player_stats ADD COLUMN maxStamina INTEGER NOT NULL DEFAULT 100');
     }
   }
 

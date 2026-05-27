@@ -1,13 +1,15 @@
 import 'package:flame/components.dart';
 import 'package:flame/collisions.dart';
-import 'package:flutter/material.dart';
 import '../game/my_game.dart';
-import 'player.dart';
+import 'wall.dart';
 
 class Slime extends SpriteComponent with HasGameReference<MyGame>, CollisionCallbacks {
   final double speed = 50.0;
   final double chaseDistance = 300.0;
+  final int attackDamage = 10;
   int health = 20;
+
+  Vector2 _previousPosition = Vector2.zero();
 
   Slime(Vector2 position) : super(size: Vector2(48, 48), position: position, anchor: Anchor.center);
 
@@ -25,6 +27,7 @@ class Slime extends SpriteComponent with HasGameReference<MyGame>, CollisionCall
 
   @override
   void update(double dt) {
+    _previousPosition.setFrom(position);
     super.update(dt);
     
     // IA de perseguição básica
@@ -45,9 +48,16 @@ class Slime extends SpriteComponent with HasGameReference<MyGame>, CollisionCall
     }
   }
 
+  @override
+  void onCollision(Set<Vector2> intersectionPoints, PositionComponent other) {
+    super.onCollision(intersectionPoints, other);
+    if (other is Wall) {
+      position.setFrom(_previousPosition);
+    }
+  }
+
   void takeDamage(int damage) {
     health -= damage;
-    print("Slime tomou $damage de dano! Vida restante: $health");
     
     // Efeito visual de tomar dano (ficar vermelho rapidamente)
     // Em Flame puro, a maneira mais fácil de piscar é alterar temporariamente o paint, 

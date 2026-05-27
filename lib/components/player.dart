@@ -1,5 +1,4 @@
 import 'package:flame/components.dart';
-import 'package:flame/sprite.dart';
 import 'package:flame/collisions.dart';
 import '../game/my_game.dart';
 import 'rpg_stats.dart';
@@ -8,6 +7,8 @@ import '../database/database_helper.dart';
 import 'package:flutter/material.dart';
 import 'item.dart';
 import 'enemy.dart';
+import 'wall.dart';
+import 'zone_portal.dart';
 
 class Player extends SpriteComponent with HasGameReference<MyGame>, CollisionCallbacks {
   late JoystickComponent joystick;
@@ -17,6 +18,13 @@ class Player extends SpriteComponent with HasGameReference<MyGame>, CollisionCal
   final double speed = 150.0;
   Vector2 lastDirection = Vector2(1, 0);
 
+  // Controle interno de precisão de double para HP/Stamina
+  double currentHealth = 100.0;
+  double currentStamina = 100.0;
+  double _damageCooldownTimer = 0.0;
+  bool _isSavingPending = false;
+  Vector2 _previousPosition = Vector2.zero();
+
   Player(this.joystick) : super(size: Vector2(64, 64), anchor: Anchor.center);
 
   @override
@@ -24,10 +32,10 @@ class Player extends SpriteComponent with HasGameReference<MyGame>, CollisionCal
     super.onLoad();
     
     // Carregar a imagem do guerreiro
-    sprite = await gameRef.loadSprite('warrior.png');
+    sprite = await game.loadSprite('warrior.png');
     
     // Posição inicial no centro da tela
-    position = gameRef.size / 2;
+    position = game.size / 2;
     
     // Adicionar a caixa de colisão do Player
     add(RectangleHitbox(
@@ -43,6 +51,9 @@ class Player extends SpriteComponent with HasGameReference<MyGame>, CollisionCal
       stats = RpgStats(); // Valores padrões
       await DatabaseHelper.instance.saveStats(stats.toMap());
     }
+
+    currentHealth = stats.currentHealth.toDouble();
+    currentStamina = stats.currentStamina.toDouble();
 
     // Carregar Inventário
     final savedInventory = await DatabaseHelper.instance.loadInventory();
@@ -66,11 +77,19 @@ class Player extends SpriteComponent with HasGameReference<MyGame>, CollisionCal
 
   @override
   void update(double dt) {
+    _previousPosition.setFrom(position);
     super.update(dt);
     
-    // Lógica de movimentação usando o Joystick
-    if (!joystick.delta.isZero()) {
-      position.add(joystick.relativeDelta * speed * dt);
+    // Cooldown de dano sofrido
+    if (_damageCooldownTimer > 0) {
+      _damageCooldownTimer -= dt;
+    }
+
+    bool isMoving = !joystick.delta.isZero();
+    double currentSpeed = (currentStamina > 0) ? speed : (speed / 2.0);
+    
+    if (isMoving) {
+      position.add(joystick.relativeDelta * currentSpeed * dt);
       
       // Salva a última direção para o ataque
       lastDirection = joystick.relativeDelta;
@@ -81,32 +100,59 @@ class Player extends SpriteComponent with HasGameReference<MyGame>, CollisionCal
       } else if (joystick.relativeDelta.x > 0 && isFlippedHorizontally) {
         flipHorizontally();
       }
+
+      // Consumir stamina ao correr
+      currentStamina -= 12.0 * dt;
+      if (currentStamina < 0) currentStamina = 0;
+      stats.currentStamina = currentStamina.round();
+
+      _isSavingPending = true;
+    } else {
+      // Regenerar stamina ao ficar parado
+      if (currentStamina < stats.maxStamina) {
+        currentStamina += 15.0 * dt;
+        if (currentStamina > stats.maxStamina) {
+          currentStamina = stats.maxStamina.toDouble();
+        }
+        stats.currentStamina = currentStamina.round();
+      } else if (_isSavingPending) {
+        _isSavingPending = false;
+        DatabaseHelper.instance.saveStats(stats.toMap());
+      }
     }
     
-    // Travar movimento nas bordas do mapa (tamanho do background é 1000x1000)
-    // Subtraímos metade do tamanho do sprite para não cortar o desenho no limite
+    // Travar movimento nas bordas do mapa (dinâmico pelo tamanho do background)
     position.clamp(
       Vector2(size.x / 2, size.y / 2),
-      Vector2(1000 - size.x / 2, 1000 - size.y / 2),
+      game.background.size - (size / 2),
     );
   }
 
   void attack() {
-    // Aqui adicionaremos a lógica de ataque (instanciar a hitbox da espada)
-    // baseada na lastDirection
-    print("Ataque realizado! Força: \${stats.attackPower}");
+    if (currentStamina < 15.0) {
+      print("Sem stamina suficiente para atacar!");
+      return;
+    }
+
+    currentStamina -= 15.0;
+    stats.currentStamina = currentStamina.round();
+    DatabaseHelper.instance.saveStats(stats.toMap());
+
+    print("Ataque realizado! Força: ${stats.attackPower}");
     
-    // Exemplo: Criar efeito visual de ataque na frente do jogador
+    // Criar efeito visual de ataque na frente do jogador
     final attackEffect = AttackEffect(position + (lastDirection * 40));
-    gameRef.add(attackEffect);
+    game.add(attackEffect);
   }
 
   void useItem(Item item) {
     if (item.type == 'consumable') {
-      stats.currentHealth += item.value;
-      if (stats.currentHealth > stats.maxHealth) {
-        stats.currentHealth = stats.maxHealth;
+      currentHealth += item.value;
+      if (currentHealth > stats.maxHealth) {
+        currentHealth = stats.maxHealth.toDouble();
       }
+      stats.currentHealth = currentHealth.round();
+      
       // Reduzir quantidade
       item.quantity--;
       if (item.quantity <= 0) {
@@ -117,8 +163,58 @@ class Player extends SpriteComponent with HasGameReference<MyGame>, CollisionCal
       }
       // Salvar os status de vida
       DatabaseHelper.instance.saveStats(stats.toMap());
-      print("Usou \${item.name}. Vida curada!");
+      print("Usou ${item.name}. Vida curada!");
     }
+  }
+
+  @override
+  void onCollision(Set<Vector2> intersectionPoints, PositionComponent other) {
+    super.onCollision(intersectionPoints, other);
+    if (other is Wall) {
+      // Impede movimentação através da parede
+      position.setFrom(_previousPosition);
+    }
+  }
+
+  @override
+  void onCollisionStart(Set<Vector2> intersectionPoints, PositionComponent other) {
+    super.onCollisionStart(intersectionPoints, other);
+    if (other is Slime) {
+      // Recebe dano do Slime ao colidir
+      takeDamage(other.attackDamage);
+    }
+  }
+
+  void takeDamage(int amount) {
+    if (_damageCooldownTimer > 0) return;
+
+    currentHealth -= amount;
+    if (currentHealth < 0) currentHealth = 0;
+    stats.currentHealth = currentHealth.round();
+
+    _damageCooldownTimer = 1.0;
+
+    // Feedback visual piscando em vermelho
+    paint.color = Colors.red;
+    Future.delayed(const Duration(milliseconds: 150), () {
+      paint.color = Colors.white;
+    });
+
+    DatabaseHelper.instance.saveStats(stats.toMap());
+
+    if (currentHealth <= 0) {
+      respawn();
+    }
+  }
+
+  void respawn() {
+    print("Jogador morreu! Renascendo...");
+    currentHealth = stats.maxHealth.toDouble();
+    currentStamina = stats.maxStamina.toDouble();
+    stats.currentHealth = currentHealth.round();
+    stats.currentStamina = currentStamina.round();
+    position = game.background.size / 2;
+    DatabaseHelper.instance.saveStats(stats.toMap());
   }
 }
 
